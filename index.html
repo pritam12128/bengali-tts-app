@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Bengali Text to Speech Converter</title>
+    
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f7f9;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            background-color: #ffffff;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 600px;
+        }
+
+        h1 {
+            text-align: center;
+            color: #1a73e8;
+            margin-bottom: 30px;
+        }
+
+        textarea {
+            width: 100%;
+            height: 150px;
+            padding: 15px;
+            margin-bottom: 20px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            box-sizing: border-box;
+            resize: none;
+            font-size: 16px;
+        }
+
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .voice-select {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        label {
+            font-weight: bold;
+            color: #333;
+        }
+
+        select {
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            flex-grow: 1;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+        }
+
+        button {
+            flex-grow: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        #speakButton {
+            background-color: #1a73e8;
+            color: white;
+        }
+
+        #speakButton:hover {
+            background-color: #0d47a1;
+        }
+
+        /* Note on Download Button: The browser API does not allow direct download of the synthesized audio file. 
+           We will use a placeholder download button in this code, but it is commented out in JS 
+           because it requires a server API.
+        */
+        #downloadButton {
+            background-color: #28a745;
+            color: white;
+        }
+        #downloadButton:hover {
+            background-color: #1e7e34;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🗣️ Bengali Text-to-Speech</h1>
+        
+        <textarea id="textInput" placeholder="এখানে বাংলাতে আপনার লেখাটি লিখুন..."></textarea>
+        
+        <div class="controls">
+            <div class="voice-select">
+                <label for="voiceSelect">Select Voice:</label>
+                <select id="voiceSelect">
+                    <option value="" disabled selected>Loading voices...</option>
+                </select>
+            </div>
+
+            <div class="button-group">
+                <button id="speakButton">▶️ Convert to Speech</button>
+                <button id="downloadButton" disabled>⬇️ Download Audio (Requires Server)</button>
+            </div>
+            
+            <p id="statusMessage" style="color: red; text-align: center; font-style: italic;"></p>
+        </div>
+    </div>
+
+    <script>
+        const textInput = document.getElementById('textInput');
+        const voiceSelect = document.getElementById('voiceSelect');
+        const speakButton = document.getElementById('speakButton');
+        const downloadButton = document.getElementById('downloadButton');
+        const statusMessage = document.getElementById('statusMessage');
+        let synth = window.speechSynthesis;
+        let voices = [];
+
+        // --- 1. Load Voices ---
+        function populateVoiceList() {
+            voices = synth.getVoices().filter(voice => voice.lang.includes('bn') || voice.lang.includes('in') || voice.lang.includes('en'));
+            
+            if (voices.length === 0) {
+                voiceSelect.innerHTML = '<option value="" disabled selected>No Bengali/Indian voices found on this browser.</option>';
+                statusMessage.textContent = "Your browser may not support Bengali TTS or has no voices installed. Try a different browser like Chrome.";
+                speakButton.disabled = true;
+                return;
+            }
+
+            voiceSelect.innerHTML = ''; // Clear loading message
+
+            // Default Bengali voices (adjust these names based on your browser's findings)
+            let defaultVoices = {
+                male: voices.find(v => v.lang.includes('bn') && v.name.toLowerCase().includes('male')) || voices.find(v => v.name.includes('Google') && v.lang.includes('bn')) || voices.find(v => v.lang.includes('bn')),
+                female: voices.find(v => v.lang.includes('bn') && v.name.toLowerCase().includes('female')) || voices.find(v => v.name.includes('Google') && v.lang.includes('bn')) || voices.find(v => v.lang.includes('bn')),
+            };
+            
+            // Add Male Option (if available)
+            if (defaultVoices.male) {
+                let option = document.createElement('option');
+                option.textContent = defaultVoices.male.name + ' (Male - Bengali)';
+                option.setAttribute('data-name', defaultVoices.male.name);
+                voiceSelect.appendChild(option);
+            } else {
+                 statusMessage.textContent = "Bengali voice support is limited or absent. Generic voices will be used.";
+            }
+
+            // Add Female Option (if available)
+             if (defaultVoices.female) {
+                let option = document.createElement('option');
+                option.textContent = defaultVoices.female.name + ' (Female - Bengali)';
+                option.setAttribute('data-name', defaultVoices.female.name);
+                voiceSelect.appendChild(option);
+            }
+            
+            // Add all other available voices (in case default Bengali names are wrong)
+            voices.forEach(voice => {
+                let option = document.createElement('option');
+                option.textContent = voice.name + ` (${voice.lang})`;
+                option.setAttribute('data-name', voice.name);
+                voiceSelect.appendChild(option);
+            });
+            
+            // Re-select the first option if none was selected
+            if (voiceSelect.selectedIndex === -1) {
+                voiceSelect.selectedIndex = 0;
+            }
+
+            statusMessage.textContent = "Voices loaded. Try typing in Bengali.";
+        }
+
+        // Run voice population after the browser registers the voices
+        if (synth.onvoiceschanged !== undefined) {
+            synth.onvoiceschanged = populateVoiceList;
+        } else {
+            populateVoiceList(); // Fallback if the event doesn't fire
+        }
+        
+        // --- 2. Speak Functionality ---
+        speakButton.addEventListener('click', () => {
+            if (synth.speaking) {
+                synth.cancel(); // Stop current speech if speaking
+            }
+
+            const text = textInput.value.trim();
+            if (text === '') {
+                statusMessage.textContent = "Please enter some text in Bengali.";
+                return;
+            }
+
+            // Get the selected voice object
+            const selectedVoiceName = voiceSelect.options[voiceSelect.selectedIndex].getAttribute('data-name');
+            const selectedVoice = voices.find(v => v.name === selectedVoiceName);
+
+            if (!selectedVoice) {
+                 statusMessage.textContent = "Selected voice not found.";
+                 return;
+            }
+            
+            // Create the speech utterance
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.voice = selectedVoice;
+            utterance.lang = 'bn-IN'; // Set language to Bengali (India) for best result
+
+            // Start speaking
+            synth.speak(utterance);
+            
+            statusMessage.textContent = `Speaking with: ${selectedVoice.name}`;
+            
+            // Reset status after speech finishes
+            utterance.onend = function(event) {
+                statusMessage.textContent = "Speech finished.";
+            };
+        });
+        
+        // --- 3. Download Button (Crucial Limitation) ---
+        // NOTE: The Web Speech API does NOT natively allow downloading the synthesized audio file (MP3/WAV). 
+        // This functionality requires an external server-side API (which costs money and requires more complex code).
+        // The download button is kept for the UI design but is disabled in the simple HTML/JS method.
+        downloadButton.addEventListener('click', () => {
+             alert("The download feature for this project requires a complex server-side API (e.g., Google Cloud TTS), which is beyond a simple HTML/CSS/JS page. Please use an external service like Murf or ElevenLabs for downloadable Bengali audio.");
+        });
+
+    </script>
+</body>
+</html>
